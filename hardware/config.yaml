@@ -1,0 +1,18 @@
+# Uses GPIO Numbers
+motors:
+  left:
+    rpwm: 12 # GPIO 12 (Pin 32)
+    lpwm: 13 # GPIO 13 (Pin 33)
+    en: 5 # GPIO 5 (Pin 29): R_EN + L_EN tied together
+  right:
+    rpwm: 18 # GPIO 18 (Pin 12)
+    lpwm: 19 # GPIO 19 (Pin 35)
+    en: 6 # GPIO 6 (Pin 31): R_EN + L_EN tied together
+
+encoders:
+  left:
+    a: 23 # GPIO 23 (Pin 16)
+    b: 24 # GPIO 24 (Pin 18)
+  right:
+    a: 16 # GPIO 16 (Pin 36)
+    b: 26 # GPIO 26 (Pin 37)
