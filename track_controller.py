@@ -14,7 +14,7 @@ from mpu9250_jmdev.mpu_9250 import MPU9250
 from hardware.motor_controller import MotorDriver, TICKS_PER_WHEEL_REV
 
 # Robot geometry - adjust to your setup
-WHEEL_DIAMETER_MM = 241
+WHEEL_DIAMETER_MM = 241  # Calibrated value
 WHEEL_BASE_MM = 150  # Distance between wheel centers
 WHEEL_CIRCUMFERENCE_MM = WHEEL_DIAMETER_MM * np.pi
 MM_PER_TICK = WHEEL_CIRCUMFERENCE_MM / TICKS_PER_WHEEL_REV
@@ -317,6 +317,8 @@ class TrackController:
         self._target_speed = 0.0
         self._current_speed = 0.0
         self._turning = False
+        self._driver.left.write_pwm(0)  # Direct PWM stop
+        self._driver.right.write_pwm(0)
         self._driver.stop()
     
     def pivot_turn(self, degrees: float, speed_tps: float = 300) -> None:
@@ -557,8 +559,13 @@ class TrackController:
     
     def shutdown(self):
         """Shutdown the controller. Call when done."""
-        self.stop()
-        self._running = False
+        self._running = False  # Stop control loop FIRST
+        self._turning = False
+        self._target_speed = 0.0
+        self._current_speed = 0.0
+        self._driver.left.write_pwm(0)  # Direct PWM stop
+        self._driver.right.write_pwm(0)
+        self._driver.stop()
         if self._control_thread:
             self._control_thread.join(timeout=0.5)
         self._driver.disable()
