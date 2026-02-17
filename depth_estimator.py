@@ -5,7 +5,6 @@ Handles camera capture + Hailo-accelerated depth estimation.
 """
 import numpy as np
 import cv2
-import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
