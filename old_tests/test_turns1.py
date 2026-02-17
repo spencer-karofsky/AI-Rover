@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test navigation: 0.5m forward, 90° right, 1m forward."""
 
-from track_controller import TrackController
+from old_tests.track_controller_old import TrackController
 import time
 
 controller = TrackController()

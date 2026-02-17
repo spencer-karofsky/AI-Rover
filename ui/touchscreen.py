@@ -16,7 +16,7 @@ os.environ['DISPLAY'] = ':0'
 os.environ['SDL_FBDEV'] = '/dev/fb0'
 
 from vision.depth import DepthEstimator, DepthFrame
-from track_controller import TrackController
+from old_tests.track_controller_old import TrackController
 
 
 class RoverState(Enum):

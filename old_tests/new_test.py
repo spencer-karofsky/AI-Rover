@@ -1,4 +1,4 @@
-from track_controller import TrackController
+from old_tests.track_controller_old import TrackController
 import time
 
 controller = TrackController()

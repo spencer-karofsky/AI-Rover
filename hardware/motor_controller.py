@@ -3,6 +3,7 @@ Hybrid motor control: Feedforward + light feedback correction.
 This gives smooth operation with precise encoder-based speed matching.
 """
 import yaml
+from pathlib import Path
 import time
 import threading
 from gpiozero import PWMOutputDevice, DigitalOutputDevice, RotaryEncoder
@@ -10,8 +11,9 @@ from gpiozero.pins.lgpio import LGPIOFactory
 
 factory = LGPIOFactory()
 
-import os
-config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
+current_folder = Path(__file__).parent
+root_folder = current_folder.parent
+config_path = root_folder / 'config.yaml'
 with open(config_path, 'r') as file:
     config = yaml.safe_load(file)
 

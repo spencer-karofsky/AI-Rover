@@ -1,21 +1,27 @@
-#!/usr/bin/env python3
 """
-Track-following controller with dead reckoning.
-Corrects both heading AND lateral position to stay on the line.
+brain/navigation.py: Plans/coordinates motor movements
 """
 import time
 import threading
 import numpy as np
 from dataclasses import dataclass
 from collections import deque
+from pathlib import Path
+import yaml
 
 from mpu9250_jmdev.registers import *
 from mpu9250_jmdev.mpu_9250 import MPU9250
 from hardware.motor_controller import MotorDriver, TICKS_PER_WHEEL_REV
 
-# Robot geometry - adjust to your setup
-WHEEL_DIAMETER_MM = 241  # Calibrated value
-WHEEL_BASE_MM = 150  # Distance between wheel centers
+# Robot geometry
+current_folder = Path(__file__).parent
+root_folder = current_folder.parent
+config_path = root_folder / 'config.yaml'
+with open(config_path, 'r') as file:
+    config = yaml.safe_load(file)
+WHEEL_DIAMETER_MM = config['robot_geometry']['wheel_diameter_mm']
+WHEEL_BASE_MM = config['robot_geometry']['wheel_base_mm']
+
 WHEEL_CIRCUMFERENCE_MM = WHEEL_DIAMETER_MM * np.pi
 MM_PER_TICK = WHEEL_CIRCUMFERENCE_MM / TICKS_PER_WHEEL_REV
 
@@ -24,12 +30,11 @@ MM_PER_TICK = WHEEL_CIRCUMFERENCE_MM / TICKS_PER_WHEEL_REV
 class RobotState:
     """Current state of the robot."""
     timestamp: float
-    x_mm: float          # Forward distance from start
-    y_mm: float          # Lateral offset (positive = right)
-    heading_deg: float   # Heading (positive = right)
-    speed_left: float    # Left wheel speed (tps)
-    speed_right: float   # Right wheel speed (tps)
-
+    x_mm: float # Forward distance from start
+    y_mm: float # Lateral offset (positive = right)
+    heading_deg: float # Heading (positive = right)
+    speed_left: float # Left wheel speed (tps)
+    speed_right: float # Right wheel speed (tps)
 
 class TrackController:
     """
@@ -43,7 +48,6 @@ class TrackController:
         controller.stop()
         controller.shutdown()
     """
-    
     def __init__(self, gyro_calibration_samples: int = 200):
         print("Initializing TrackController...")
         
@@ -79,12 +83,12 @@ class TrackController:
         
         # Turn state
         self._turning = False
-        self._turn_target = 0.0      # Target heading in degrees
-        self._turn_speed = 0.0       # Base speed for turn
-        self._turn_radius = 0.0      # Turn radius (0 = pivot)
-        self._turn_direction = 1     # 1 = right, -1 = left
+        self._turn_target = 0.0 # Target heading in degrees
+        self._turn_speed = 0.0 # Base speed for turn
+        self._turn_radius = 0.0 # Turn radius (0 = pivot)
+        self._turn_direction = 1 # 1 = right, -1 = left
         self._turn_complete = False
-        self._turn_start_time = 0.0  # For timeout safety
+        self._turn_start_time = 0.0 # For timeout safety
         
         # PID state
         self._heading_integral = 0.0
@@ -99,13 +103,13 @@ class TrackController:
         self.lateral_kp = 0.4
         self.lateral_ki = 0.02
         self.max_correction = 250
-        self.max_heading_correction = 45  # degrees
+        self.max_heading_correction = 45 # degrees
         
         # Threading
         self._running = False
         self._control_thread = None
         self._telemetry = deque(maxlen=2000)
-        self._control_rate = 50  # Hz
+        self._control_rate = 50 # Hz
         
         print("TrackController ready.")
     
@@ -121,7 +125,7 @@ class TrackController:
         right_ticks = self._driver.right.ticks
         
         dl = (left_ticks - self._last_left_ticks) * MM_PER_TICK
-        dr = -(right_ticks - self._last_right_ticks) * MM_PER_TICK  # Right inverted
+        dr = -(right_ticks - self._last_right_ticks) * MM_PER_TICK # Right inverted
         
         self._last_left_ticks = left_ticks
         self._last_right_ticks = right_ticks
@@ -167,10 +171,10 @@ class TrackController:
             right = -self._turn_speed * self._turn_direction
         elif self._turn_radius == float('inf'):
             # Swing turn: one wheel stopped
-            if self._turn_direction > 0:  # Right turn
+            if self._turn_direction > 0: # Right turn
                 left = self._turn_speed
                 right = 0
-            else:  # Left turn
+            else: # Left turn
                 left = 0
                 right = self._turn_speed
         else:
@@ -179,11 +183,11 @@ class TrackController:
             w = WHEEL_BASE_MM / 2
             
             if self._turn_direction > 0:  # Right turn (turning around right side)
-                left = self._turn_speed * (r + w) / r   # Outer wheel
-                right = self._turn_speed * (r - w) / r  # Inner wheel
+                left = self._turn_speed * (r + w) / r # Outer wheel
+                right = self._turn_speed * (r - w) / r # Inner wheel
             else:  # Left turn
-                left = self._turn_speed * (r - w) / r   # Inner wheel
-                right = self._turn_speed * (r + w) / r  # Outer wheel
+                left = self._turn_speed * (r - w) / r # Inner wheel
+                right = self._turn_speed * (r + w) / r # Outer wheel
         
         return left, right
     
@@ -210,7 +214,7 @@ class TrackController:
             
             # Compute and apply correction
             if self._turning:
-                # Safety timeout - 10 seconds max for any turn
+                # Safety timeout: 10 seconds max for any turn
                 if now - self._turn_start_time > 10.0:
                     print("\n[SAFETY] Turn timeout!")
                     self._turning = False
@@ -222,14 +226,11 @@ class TrackController:
                 remaining = self._turn_target - self._heading
                 
                 # Done when we've crossed the target
-                if self._turn_direction > 0:  # Right turn (heading increasing)
+                if self._turn_direction > 0: # Right turn (heading increasing)
                     done = self._heading >= self._turn_target
                 else:  # Left turn (heading decreasing)
                     done = self._heading <= self._turn_target
                 
-                # Debug output (comment out for production)
-                # if int(now * 5) % 2 == 0:
-                #     print(f"\rTurn: hdg={self._heading:+.1f}° tgt={self._turn_target:+.1f}° rem={remaining:+.1f}°   ", end="", flush=True)
                 if self._turn_direction > 0:  # Right turn
                     done = self._heading >= self._turn_target
                 else:  # Left turn
@@ -242,8 +243,8 @@ class TrackController:
                 else:
                     # Slow down as we approach target
                     remaining = abs(self._turn_target - self._heading)
-                    speed_factor = min(1.0, remaining / 15)  # Slow down in last 15°
-                    speed_factor = max(0.5, speed_factor)    # Minimum 50% speed
+                    speed_factor = min(1.0, remaining / 15) # Slow down in last 15 degrees
+                    speed_factor = max(0.5, speed_factor) # Minimum 50% speed
                     
                     left, right = self._compute_turn_speeds()
                     left *= speed_factor
@@ -259,7 +260,7 @@ class TrackController:
                         self._driver.left.write_pwm(left_pwm)
                         self._driver.right.write_pwm(right_pwm)
                     elif self._turn_radius == float('inf'):
-                        # Swing turn: one wheel stopped, one moving - use direct PWM
+                        # Swing turn: one wheel stopped, one moving – use direct PWM
                         left_pwm = (abs(left) / 800) if left > 0 else 0
                         right_pwm = (abs(right) / 800) if right > 0 else 0
                         left_pwm = min(0.9, left_pwm)
@@ -290,8 +291,7 @@ class TrackController:
             if elapsed < period:
                 time.sleep(period - elapsed)
     
-    # === Public Interface ===
-    
+    # Public Interface
     def start(self):
         """Start the controller. Call this before any movement commands."""
         self._driver.start()
@@ -310,14 +310,14 @@ class TrackController:
         if reset_position:
             self.reset_tracking()
         self._target_speed = abs(speed_tps)
-        self._current_speed = 200  # Start above stiction zone
+        self._current_speed = 200 # Start above stiction zone
     
     def stop(self):
         """Stop driving."""
         self._target_speed = 0.0
         self._current_speed = 0.0
         self._turning = False
-        self._driver.left.write_pwm(0)  # Direct PWM stop
+        self._driver.left.write_pwm(0) # Direct PWM stop
         self._driver.right.write_pwm(0)
         self._driver.stop()
     
@@ -347,7 +347,7 @@ class TrackController:
         """
         self._turn_target = self._heading + degrees
         self._turn_speed = speed_tps
-        self._turn_radius = float('inf')  # Signal for swing turn
+        self._turn_radius = float('inf') # Signal for swing turn
         self._turn_direction = 1 if degrees > 0 else -1
         self._turn_complete = False
         self._turn_start_time = time.monotonic()
@@ -408,8 +408,7 @@ class TrackController:
         """Check if currently turning."""
         return self._turning
     
-    # === High-Level Navigation ===
-    
+    # High-Level Navigation
     def drive_distance(self, distance_mm: float, speed_tps: float = 600) -> bool:
         """
         Drive straight for a specific distance, then stop.
@@ -470,7 +469,7 @@ class TrackController:
         while angle_diff < -180:
             angle_diff += 360
         
-        if abs(angle_diff) > 2:  # Only turn if needed
+        if abs(angle_diff) > 2: # Only turn if needed
             self.pivot_turn(angle_diff)
             if not self.wait_for_turn():
                 return False
@@ -559,11 +558,11 @@ class TrackController:
     
     def shutdown(self):
         """Shutdown the controller. Call when done."""
-        self._running = False  # Stop control loop FIRST
+        self._running = False # Stop control loop FIRST
         self._turning = False
         self._target_speed = 0.0
         self._current_speed = 0.0
-        self._driver.left.write_pwm(0)  # Direct PWM stop
+        self._driver.left.write_pwm(0) # Direct PWM stop
         self._driver.right.write_pwm(0)
         self._driver.stop()
         if self._control_thread:
@@ -610,216 +609,3 @@ class TrackController:
         """Get telemetry history."""
         return list(self._telemetry)
 
-
-# === Demo / Test ===
-
-def demo_turns():
-    """Demo all three turn types."""
-    controller = TrackController()
-    controller.start()
-    
-    try:
-        print("\n" + "="*50)
-        print("TURN DEMO")
-        print("="*50)
-        
-        # Pivot turn
-        print("\n--- PIVOT TURN: 90° right ---")
-        input("Press Enter...")
-        controller.pivot_turn(90, speed_tps=350)
-        while controller.is_turning:
-            time.sleep(0.1)
-            print(f"Heading: {controller.heading:+.1f}°")
-        print(f"Final: {controller.heading:+.1f}° (target: 90°)")
-        
-        time.sleep(1)
-        
-        # Pivot back
-        print("\n--- PIVOT TURN: 90° left ---")
-        input("Press Enter...")
-        controller.pivot_turn(-90, speed_tps=350)
-        controller.wait_for_turn()
-        print(f"Final: {controller.heading:+.1f}° (target: 0°)")
-        
-        time.sleep(1)
-        
-        # Swing turn
-        print("\n--- SWING TURN: 90° right ---")
-        input("Press Enter...")
-        controller.swing_turn(90, speed_tps=400)
-        while controller.is_turning:
-            time.sleep(0.1)
-            s = controller.state
-            print(f"Heading: {s.heading_deg:+.1f}° | Pos: ({s.x_mm:.0f}, {s.y_mm:.0f})")
-        print(f"Final heading: {controller.heading:+.1f}°")
-        
-        time.sleep(1)
-        controller.reset_tracking()
-        
-        # Arc turn
-        print("\n--- ARC TURN: 90° right, 300mm radius ---")
-        input("Press Enter...")
-        controller.arc_turn(90, radius_mm=300, speed_tps=500)
-        while controller.is_turning:
-            time.sleep(0.1)
-            s = controller.state
-            print(f"Heading: {s.heading_deg:+.1f}° | Pos: ({s.x_mm:.0f}, {s.y_mm:.0f})")
-        print(f"Final heading: {controller.heading:+.1f}°")
-        
-        controller.stop()
-        
-    except KeyboardInterrupt:
-        print("\nInterrupted.")
-    finally:
-        controller.shutdown()
-
-
-def demo_calibrate():
-    """Calibrate wheel diameter."""
-    controller = TrackController()
-    controller.start()
-    
-    try:
-        print("\n" + "="*50)
-        print("WHEEL CALIBRATION")
-        print("="*50)
-        print(f"\nCurrent wheel diameter: {WHEEL_DIAMETER_MM}mm")
-        
-        input("\nMark starting position, press Enter...")
-        
-        controller.drive(500)
-        time.sleep(2)  # 2 seconds
-        controller.stop()
-        
-        reported = controller.position[0]
-        print(f"\nReported distance: {reported:.0f}mm")
-        
-        actual = input("Enter ACTUAL measured distance (mm): ")
-        actual = float(actual)
-        
-        # Calculate correct diameter
-        # actual / reported = correct_diameter / current_diameter
-        correct_diameter = WHEEL_DIAMETER_MM * (actual / reported)
-        print(f"\nCorrect wheel diameter: {correct_diameter:.1f}mm")
-        print(f"Update WHEEL_DIAMETER_MM = {correct_diameter:.1f} in the code")
-        
-    except KeyboardInterrupt:
-        print("\nInterrupted.")
-    finally:
-        controller.shutdown()
-
-
-def demo_navigation():
-    """Demo high-level navigation commands."""
-    controller = TrackController()
-    controller.start()
-    
-    try:
-        print("\n" + "="*50)
-        print("NAVIGATION DEMO")
-        print("="*50)
-        
-        # Test 1: Drive distance
-        print("\n--- Drive 300mm forward ---")
-        input("Press Enter...")
-        controller.drive_distance(300)
-        print(f"Position: ({controller.position[0]:.0f}, {controller.position[1]:.0f})mm")
-        
-        time.sleep(1)
-        controller.reset_tracking()
-        
-        # Test 2: Drive square
-        print("\n--- Drive 200mm square ---")
-        input("Press Enter...")
-        controller.drive_square(200)
-        print(f"Final position: ({controller.position[0]:.0f}, {controller.position[1]:.0f})mm")
-        print(f"Final heading: {controller.heading:.1f}° (should be ~0°)")
-        
-        time.sleep(1)
-        controller.reset_tracking()
-        
-        # Test 3: Drive triangle
-        print("\n--- Drive triangle (3 sides, 200mm) ---")
-        input("Press Enter...")
-        controller.drive_polygon(3, 200)
-        print(f"Final position: ({controller.position[0]:.0f}, {controller.position[1]:.0f})mm")
-        
-        time.sleep(1)
-        controller.reset_tracking()
-        
-        # Test 4: Waypoint navigation
-        print("\n--- Drive to waypoints ---")
-        input("Press Enter...")
-        waypoints = [
-            (200, 0),
-            (200, 200),
-            (0, 200),
-            (0, 0)
-        ]
-        controller.drive_path(waypoints)
-        print(f"Final position: ({controller.position[0]:.0f}, {controller.position[1]:.0f})mm")
-        
-    except KeyboardInterrupt:
-        print("\nInterrupted.")
-    finally:
-        controller.shutdown()
-        print("Done.")
-
-
-def demo_ablation():
-    """Demo: Let it drift, then watch correction kick in."""
-    controller = TrackController()
-    controller.start()
-    
-    try:
-        print("\n" + "="*50)
-        print("TRACK CORRECTION DEMO")
-        print("="*50)
-        print("\nPhase 1: Correction OFF (will drift)")
-        print("Phase 2: Correction ON (returns to line)")
-        input("\nPress Enter to start...")
-        
-        # Phase 1: Drift
-        controller.enable_correction(False)
-        controller.drive(600)
-        
-        print("\n--- PHASE 1: Drifting ---\n")
-        for _ in range(15):
-            time.sleep(0.2)
-            s = controller.state
-            print(f"Hdg:{s.heading_deg:+6.1f}° | Y:{s.y_mm:+6.0f}mm | X:{s.x_mm:5.0f}mm")
-        
-        # Phase 2: Correct
-        print("\n--- PHASE 2: Correcting ---\n")
-        controller.enable_correction(True)
-        
-        for _ in range(60):
-            time.sleep(0.2)
-            s = controller.state
-            print(f"Hdg:{s.heading_deg:+6.1f}° | Y:{s.y_mm:+6.0f}mm | X:{s.x_mm:5.0f}mm")
-        
-        controller.stop()
-        print(f"\nFinal: Y={controller.state.y_mm:+.0f}mm, Heading={controller.state.heading_deg:+.1f}°")
-        
-    except KeyboardInterrupt:
-        print("\nInterrupted.")
-    finally:
-        controller.shutdown()
-
-
-if __name__ == '__main__':
-    import sys
-    if len(sys.argv) > 1:
-        cmd = sys.argv[1]
-        if cmd == 'turns':
-            demo_turns()
-        elif cmd == 'nav':
-            demo_navigation()
-        elif cmd == 'ablation':
-            demo_ablation()
-        elif cmd == 'calibrate':
-            demo_calibrate()
-        else:
-            print("Usage: python track_controller.py [turns|nav|ablation|calibrate]")
-    else:
-        demo_ablation()

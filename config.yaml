@@ -16,3 +16,7 @@ encoders:
   right:
     a: 16 # GPIO 16 (Pin 36)
     b: 26 # GPIO 26 (Pin 37)
+
+robot_geometry:
+  wheel_diameter_mm: 241
+  wheel_base_mm: 150
